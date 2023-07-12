@@ -1,0 +1,585 @@
+---
+title: "Network Analysis in R"
+author: "Yeo Ming Jie, Jonathan"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+rm(list=ls()) # clear global directory
+knitr::opts_knit$set(root.dir = '~/Desktop/MSc Statistics Coursework/Additional Courses/Datacamp Courses/Network Analysis with R (Skill Track)')
+```
+
+This document provides an overview of basic concepts in network analysis and graph theory, with practical examples implemented in the R programming language.
+
+## 1. Introduction to Network Analysis
+
+First, load the required packages:
+
+```{r}
+library(igraph) # Core package for network analysis
+library(threejs) # 3D network visualization
+```
+
+The `igraph` package is essential for network analysis in R. It provides efficient, high-level functions for network manipulation, analysis, and visualization. On the other hand, the `threejs` package is used to create interactive 3D visualizations of our networks.
+
+### Loading and Inspecting Data
+
+Here, the dataset 'friends.csv' is loaded and converted into a graph object, `g`, using the `graph.edgelist()` function. This function reads in a list of edges from a matrix, creating an undirected graph (since `directed = FALSE`).
+
+We can inspect the following key properties of our network using the following commands:
+
+-   `V(g)`: Displays the vertices (or nodes) of the graph.
+-   `E(g)`: Displays the edges of the graph, where each edge represents a connection or relationship between two vertices.
+-   `gsize(g)`: Returns the number of edges in the graph, which can give an idea of the interconnectedness of the network.
+-   `gorder(g)`: Returns the number of nodes in the graph, indicating the size of the network.
+
+```{r}
+# Loading dataset
+friends <- read.csv('friends.csv')
+head(friends)
+
+# Load edgelist df as graph
+friends.mat <- as.matrix(friends)
+g <- graph.edgelist(friends.mat,
+                    directed = FALSE)
+
+# Inspecting basic properties of graph data
+V(g); E(g) # vertices / edges
+gsize(g) # no. of edges
+gorder(g) # no. of nodes
+
+# Plot network
+plot(g)
+```
+
+### Adding Vertex and Edge Attributes
+
+In addition to the structure of the network (i.e., nodes and their connections), often, we need to incorporate additional data associated with the nodes (vertices) or the connections (edges). In `igraph`, these are handled through vertex and edge attributes:
+
+```{r}
+genders <- c("M", "F", "F", "M", "M", "M", "F", "M",
+             "M", "F", "M", "F", "M", "F", "M", "M")
+ages <- c(18, 19, 21, 20, 22, 18, 23, 21,
+          22, 20, 20, 22, 21, 18, 19, 20)
+
+g <- set_vertex_attr(g, "gender", value = genders)
+g <- set_vertex_attr(g, "age", value = ages)
+
+vertex_attr(g) # get vertex attr
+```
+
+The code above creates new vertex attributes, namely `gender` and `age`, and assigns them to the graph `g` using the `set_vertex_attr` function. The `vertex_attr(g)` function can then be used to retrieve all vertex attributes.
+
+Similarly, we can create and add edge attributes to our graph:
+
+```{r}
+hours <- c(1, 2, 2, 1, 2, 5, 5, 1, 1,
+           3, 2, 1, 1, 5, 1, 2, 4, 1,
+           3, 1, 1, 1, 4, 1, 3, 3, 4)
+
+g <- set_edge_attr(g, "hours", value = hours)
+edge_attr(g)
+
+E(g)[[.inc('Britt')]] # Find all edges that include "Britt"
+E(g)[[hours>=4]]  # Find all pairs that spend 4 or more hours together per week
+```
+
+The `hours` edge attribute represents the number of hours each pair of friends spends together per week. We can use edge attributes to query our graph, such as finding all edges (friend pairs) that include "Britt" or pairs that spend 4 or more hours together per week.
+
+### Loading a Graph with Node and Edge Attributes from CSV Files
+
+We can also load graph data directly from files that include node and edge attributes:
+
+```{r}
+# Load dataframe with edge and node attributes
+friends1_edges <- read.csv('friends1_edges.csv')
+friends1_nodes <- read.csv('friends1_nodes.csv')
+
+# Load graph from df
+g1 <- graph_from_data_frame(d = friends1_edges,
+          vertices = friends1_nodes,
+          directed = FALSE)
+
+E(g1)[[hours >= 5]]  # Subset edges greater than or equal to 5 hours
+V(g1)$color <- ifelse(V(g1)$gender == "F", # Set vertex color by gender
+                      "orange", "dodgerblue")
+
+# Visualizing attributes
+plot(g1, vertex.label.color = "black")
+```
+
+The `graph_from_data_frame` function is used to create a graph from two data frames: one that contains edge attributes (`friends1_edges`) and one that contains node attributes (`friends1_nodes`).
+
+Next, we set the color of each node (vertex) based on the gender attribute. Finally, the network is visualized with `plot()`, which now includes the new color attribute.
+
+The added attributes can provide richer insights and improve the clarity of visualizations. For instance, here, we can immediately see the gender distribution in the network. Attributes can be any information that adds value to our analysis---demographic data, interaction frequency, weights of connections, etc.
+
+### Exploring Network Layouts
+
+The `igraph` package offers a range of layout algorithms to choose from when visualizing a network. These layouts can drastically affect the readability and interpretability of the network:
+
+```{r}
+## Exploring igraph network layouts
+par(mfrow = c(1,2))
+plot(g1, vertex.label.color = "black", layout = layout_in_circle(g1))
+plot(g1, vertex.label.color = "black", layout = layout_with_fr(g1))
+
+par(mfrow = c(1,2))
+m <- layout_as_tree(g1)
+plot(g1, vertex.label.color = "black", layout = m)
+m1 <- layout_nicely(g1)
+plot(g1, vertex.label.color = "black", layout = m1)
+```
+
+The `layout_in_circle` function places all vertices on a circle, while `layout_with_fr` applies the Fruchterman-Reingold layout algorithm, which positions nodes with more connections closer to the center.
+
+The `layout_as_tree` function, as the name suggests, presents the network in a tree-like structure, and `layout_nicely` applies an appropriate layout based on the characteristics of the network.
+
+Choosing an appropriate layout is crucial for effectively conveying the structure and relationships within the network.
+
+### Visualizing Edge Weights and Modifying Networks
+
+Edge weights, represented as the `hours` attribute, can be visualized in the network graph to demonstrate the strength of relationships:
+
+```{r}
+# Create a vector of weights based on the number of hours each pair spend together
+w1 <- E(g1)$hours
+
+# Plot the network varying edges by weights
+m1 <- layout_nicely(g1)
+plot(g1, 
+     vertex.label.color = "black", 
+     edge.color = 'black',
+     edge.width = w1,
+     layout = m1, 
+     main = "Weighted graph")
+```
+
+The `plot` function is used to display the network graph, with the `edge.width` parameter set to `w1` (the `hours` edge attribute). This causes the width of the edges in the graph to correspond to the number of hours each pair of friends spends together each week.
+
+Next, we can create a new network graph where only relationships that are 2 hours or longer are displayed:
+
+```{r}
+# Create a new igraph object by deleting edges that are less than 2 hours long 
+g2 <- delete_edges(g1, E(g1)[hours < 2])
+
+# Plot the new graph 
+w2 <- E(g2)$hours
+m2 <- layout_nicely(g2)
+
+plot(g2, 
+     vertex.label.color = "black", 
+     edge.color = 'black',
+     edge.width = w2,
+     layout = m2,
+     main = "Weighted (hours > 2)")
+```
+
+The `delete_edges` function is used to remove all edges (friend pairs) that spend less than 2 hours together per week, creating a new graph `g2`. This modified graph is then displayed, once again with edge widths corresponding to the `hours` edge attribute.
+
+The ability to add, remove, and modify nodes and edges enables the construction of subgraphs, the exploration of specific network features, and the simulation of dynamic network changes.
+
+## 2. Identifying important vertices in a network
+
+In this chapter you will learn about directed networks. You will also learn how to identify key relationships between vertices in a network as well as how to use these relationships to identify important or influential vertices. Throughout this chapter you will use a network of measles transmission. The data come from the German city of Hagelloch in 1861. Each directed edge of the network indicates a child becoming infected with measles after coming into contact with an infected child.
+
+### Creating a Directed Graph
+
+Creating a directed graph is straightforward using `igraph`'s `graph_from_data_frame()` function. The directed parameter is set to `TRUE` to indicate that the edges have a direction associated with them.
+
+```{r}
+# Load measles dataframe
+measles <- read.csv('measles.csv')
+
+# Initialize new directed graph
+g <- graph_from_data_frame(measles, directed = TRUE)
+
+is.directed(g); is.weighted(g) # Check directed / weighted graph
+table(head_of(g, E(g))) # Check edge origins
+
+# Exploratory plot of graph
+plot(g, 
+    vertex.label.color = "black", 
+    edge.color = 'gray77',
+    vertex.size = 0,
+    edge.arrow.size = 0.1,
+    layout = layout_nicely(g))
+```
+
+### Inspecting Edges and their Directionality
+
+Edges in a directed graph have a direction, going from one vertex to another. These directed connections can be inspected using the adjacency matrix or the `incident()` function:
+
+```{r}
+# Is there an edge going from vertex 184 to vertex 178?
+g['184', '178']
+
+# Is there an edge going from vertex 178 to vertex 184?
+g['178', '184']
+
+incident(g, '184', mode = c("all")) # Show all edges going to or from vertex 184
+incident(g, '184', mode = c("out")) # Show all edges going out from vertex 184
+```
+
+### Neighboring Vertices and Intersections
+
+The `neighbors()` function shows the adjacent vertices of a given node. The `mode` parameter specifies the direction of the edges to consider. The `intersection()` function can be used to identify vertices that share in- and out- connections:
+
+```{r}
+##  Neighboring nodes
+neighbors(g, '12', mode = c('all'))
+
+# Identify other vertices that direct edges towards vertex 12
+neighbors(g, '12', mode = c('in'))
+
+# Identify any vertices that receive an edge from vertex 42 and direct an edge to vertex 124
+n1 <- neighbors(g, '42', mode = c('out'))
+n2 <- neighbors(g, '124', mode = c('in'))
+intersection(n1, n2)
+```
+
+### Calculating Distances
+
+The `igraph` package provides functions for calculating the farthest vertices (`farthest_vertices()`), the longest traversal path (`get_diameter()`), and reachable vertices within a certain number of connections (`ego()`):
+
+```{r}
+## Distances between vertices
+farthest_vertices(g) # diameter / longest traversal length
+get_diameter(g) # path sequence between furthest vertices
+
+# Identify vertices that are reachable within two connections from vertex 42
+ego(g, 2, '42', mode = c('out'))
+
+# Identify vertices that can reach vertex 42 within two connections
+ego(g, 2, '42', mode = c('in'))
+```
+
+### Identifying Key Vertices
+
+Key vertices (also known as "hubs") are often of particular interest in network analysis. They can be identified based on their degree (the number of edges connected to a vertex):
+
+```{r}
+## Identifying key vertices
+g.outd <- degree(g, mode = c("out")) # Calculate the out-degree of each vertex
+
+table(g.outd) # Summary of out-degree
+hist(g.outd, breaks = 30) # out-degree histogram
+
+which.max(g.outd) # vertex with maximum out-degree
+```
+
+In directed networks, it's important to differentiate between in-degree (number of incoming edges) and out-degree (number of outgoing edges). Nodes with high out-degrees are often sources of information or influence within the network.
+
+### Betweenness Centrality
+
+Betweenness centrality is a measure of a node's centrality in a network. It equals the number of shortest paths from all vertices to all others that pass through that node. Betweenness centrality is a more sophisticated measure of centrality than simple degree, because it takes into account not just the quantity of connections a node has, but also the quality of those connections in terms of information flow across the entire network.
+
+```{r}
+## Betweenness Centrality Measure
+g.b <- betweenness(g, directed = TRUE)
+
+# Show histogram of vertex betweenness
+par(mfrow = c(1,2))
+hist(g.b, breaks = 80)
+
+# Create plot with vertex size determined by betweenness score
+plot(g, 
+     vertex.label = NA,
+     edge.color = 'black',
+     vertex.size = sqrt(g.b)+1, # normalization allows all nodes to be viewed, 
+     edge.arrow.size = 0.05, # ... relative importance to be identifiable
+     layout = layout_nicely(g),
+     main = "Betweenness (node size)")
+```
+
+### Visualization Based on Geodesic Distance
+
+Geodesic distance in a graph is the shortest path between two vertices. It is often useful to visualize geodesic distances from a particular node of interest (in this case, vertex 184) to all other nodes. This allows for a clear view of the relative positioning and connectivity of nodes in the network.
+
+```{r}
+## Visualizing important nodes and edges
+# Make an ego graph (subset of network comprised of all nodes connected to node 184)
+g184 <- make_ego_graph(g, diameter(g),
+                       nodes = '184',
+                       mode = c("all"))[[1]]
+
+# Get a vector of geodesic distances of all vertices from vertex 184 
+dists <- distances(g184, "184")
+
+# Create a color palette of length equal to the maximal geodesic distance plus one.
+colors <- c("black", "red", "orange",
+                   "blue", "dodgerblue", "cyan")
+
+# Set color attribute to vertices of network g184.
+V(g184)$color <- colors[dists+1]
+
+# Visualize the network based on geodesic distance from vertex 184 (patient zero).
+plot(g184, 
+    vertex.label = dists, 
+    vertex.label.color = "white",
+    vertex.label.cex = .6,
+    edge.color = 'black',
+    vertex.size = 7,
+    edge.arrow.size = .05,
+    main = "Geodesic Distances from Patient Zero"
+)
+```
+
+This approach helps visualize not just the network structure, but also how influence, information, or a contagion might propagate through the network from this starting point (often referred to as "patient zero" in the context of disease transmission).
+
+## 3. Characterizing Network Structures
+
+This module will show how to characterize global network structures and sub-structures. It will also introduce generating random network graphs.
+
+### Forrest Gump Network
+
+Now, let's construct and analyze a network from the "Forrest Gump" dataset. To measure the relative importance of each node, we'll calculate their *eigenvector centrality*. Nodes with high eigenvector centrality are often influential nodes within the network because they are not only well connected themselves but also connected to other well-connected nodes.
+
+```{r}
+## Forrest Gump Network
+gump <- read.csv('gump.csv')
+head(gump)
+
+# Make an undirected network
+g <- graph_from_data_frame(gump, directed = FALSE)
+
+# Identify key nodes using eigenvector centrality
+g.ec <- eigen_centrality(g)
+which.max(g.ec$vector) # identify node with highest eigencentrality score
+
+# Plot Forrest Gump Network
+plot(g,
+     vertex.label.color = "black", 
+     vertex.label.cex = 0.6,
+     vertex.size = 25*(g.ec$vector),
+     edge.color = 'gray88',
+     main = "Forrest Gump Network"
+)
+```
+
+Next, we'll explore the density of the graph, which is a measure of the actual number of edges versus the potential number of edges, the diameter of the graph (the longest path distance), and the average path length.
+
+```{r}
+# Get density of a graph (proportion of current edges vs all potential edges)
+gd <- edge_density(g)
+
+# Get the diameter of the graph g (longest path distance)
+diameter(g, directed = FALSE)
+
+# Get the average path length of the graph g
+g.apl <- mean_distance(g, directed = FALSE)
+g.apl
+```
+
+### Random Graphs
+
+Random graphs are useful for comparing our actual network to what we would expect by chance. We will create one random graph, `g.random`, which has the same number of nodes and edges as our original graph.
+
+```{r}
+## Random Graphs
+# Create one random graph with the same number of nodes and edges as g
+g.random <- erdos.renyi.game(n = gorder(g), p.or.m = gd, type = "gnp")
+g.random
+
+plot(g.random)
+
+# Get density of new random graph `g.random`
+edge_density(g.random)
+
+# Get the average path length of the random graph g.random
+mean_distance(g.random, directed = FALSE)
+```
+
+### Randomization Test
+
+To statistically evaluate the structure of our network, we can perform a randomization test. This involves generating a large number of random networks and comparing the average path length of these networks to our original network. 
+
+```{r}
+## Randomization Test
+# Generate 1000 random graphs
+gl <- vector('list', 1000)
+
+for(i in 1:1000){
+  gl[[i]] <- erdos.renyi.game(n = gorder(g), p.or.m = gd, type = "gnp")
+}
+
+# Calculate average path length of 1000 random graphs
+gl.apls <- unlist(lapply(gl, mean_distance, directed = FALSE))
+
+# Plot the distribution of average path lengths
+hist(gl.apls, xlim = range(c(1.5, 6)))
+abline(v = g.apl, col = "red", lty = 3, lwd = 2)
+
+# Calculate the proportion of graphs with an average path length lower than our observed
+mean(gl.apls < g.apl)
+```
+
+The red vertical line in the histogram represents the average path length of our original network. The proportion of random graphs with an average path length less than ours can be interpreted as a p-value. If this value is small (e.g., less than 0.05), we would conclude that our network's structure is significantly different from a random network.
+
+The Forrest Gump network is far more interconnected than we would expect by chance as zero random networks have an average path length smaller than the Forrest Gump network's average path length.
+
+### Network Substructures (Triangles, Transitivity and Cliques)
+
+Triangles in a network are substructures consisting of three nodes that are all connected to each other. Transitivity is a measure of the overall tendency to form triangles within a network. Cliques are subnetworks where every node is connected to every other node.
+
+```{r}
+## Network Substructures
+matrix(triangles(g), nrow = 3)[,1:5] # matrix of all possible triangles
+
+count_triangles(g, vids='BUBBA') # Count the number of triangles that vertex "BUBBA" is in.
+
+g.tr <- transitivity(g) # Calculate global transitivity of the network.
+g.tr
+
+transitivity(g, vids='BUBBA', type = "local") # Calculate the local transitivity for vertex BUBBA.
+```
+
+### Transitivity Randomizations
+
+To test whether the transitivity of our network is greater than expected by chance, we can compare the observed transitivity to that of a set of random networks.
+
+```{r}
+## Transitivity Randomizations
+gl.tr <- lapply(gl, transitivity) # Calculate average transitivity of 1000 random graphs
+gl.trs <- unlist(gl.tr)
+
+summary(gl.trs) # Get summary statistics of transitivity scores
+
+mean(gl.trs > g.tr) # Calculate the proportion of graphs with a transitivity score higher than our observed
+```
+
+### Cliques
+
+Cliques are subgroups where every node is connected to every other node. Let's identify the largest cliques in our network.
+
+```{r}
+## Cliques
+largest_cliques(g) # Identify the largest cliques in the network
+
+clq <- max_cliques(g) # Determine all maximal cliques in the network
+
+table(unlist(lapply(clq, length))) # Calculate the size of each maximal clique.
+
+lc <- largest_cliques(g) # Assign largest cliques output to object 'lc'
+gs1 <- as.undirected(subgraph(g, lc[[1]])) # Create new undirected subgraph containing only the vertices of largest clique.
+gs2 <- as.undirected(subgraph(g, lc[[2]]))
+
+# Plot the two largest cliques side-by-side
+par(mfrow=c(1,2))
+plot(gs1,
+    vertex.label.color = "black", 
+    vertex.label.cex = 0.9,
+    vertex.size = 0,
+    edge.color = 'gray28',
+    main = "Largest Clique 1",
+    layout = layout.circle(gs1)
+)
+
+plot(gs2,
+    vertex.label.color = "black", 
+    vertex.label.cex = 0.9,
+    vertex.size = 0,
+    edge.color = 'gray28',
+    main = "Largest Clique 2",
+    layout = layout.circle(gs2)
+)
+```
+
+## 4. Identifying Special Relationships
+
+This chapter will further explore the partitioning of networks into sub-networks and determining which vertices are more highly related to one another than others. You will also develop visualization methods by creating three-dimensional visualizations.
+
+### Close Relationships
+
+Assortativity measures whether nodes tend to connect to similar or dissimilar nodes. In this case, we will examine assortativity in terms of gender and degree.
+
+```{r}
+## Close Relationships
+plot(g1) # Plot the network
+
+values <- as.numeric(factor(V(g1)$gender)) # Convert the gender attribute into a numeric value
+
+assortativity(g1, values) # Calculate the assortativity of the network based on gender
+assortativity.degree(g1, directed = FALSE) # Calculate the assortativity degree of the network
+
+observed.assortativity <- assortativity(g1, values) # Calculate the observed assortativity
+
+results <- vector('list', 1000) # Calculate the assortativity of the network randomizing the gender attribute 1000 times
+for(i in 1:1000){
+  results[[i]] <- assortativity(g1
+
+, sample(values))
+}
+
+# Plot the distribution of assortativity values and add a red vertical line at the original observed value
+hist(unlist(results))
+abline(v = observed.assortativity, col = "red", lty = 3, lwd=2)
+```
+
+In the context of directed networks, reciprocity is a measure of the likelihood of vertices to be mutually linked. It's a measure of 'mutuality' of edges in the graph.
+
+```{r}
+# Make a plot of the chimp grooming network
+plot(g,
+     edge.color = "black",
+     edge.arrow.size = 0.3,
+     edge.arrow.width = 0.5)
+
+# Calculate the reciprocity of the graph
+reciprocity(g)
+```
+
+This will output the proportion of mutual connections, or reciprocal edges, in relation to the total number of edges, in the directed network graph 'g'.
+
+### Community Detection
+
+Community detection is an important task in network analysis which deals with the identification of densely connected groups of nodes. Two algorithms are commonly used for community detection: the fast-greedy algorithm and the edge-betweenness algorithm. 
+
+```{r}
+## Community Detection
+kc = fastgreedy.community(g) # Perform fast-greedy community detection on network graph
+sizes(kc) # Determine sizes of each community
+membership(kc) # Determine which individuals belong to which community
+
+plot(kc, g) # Plot the community structure of the network
+
+gc = edge.betweenness.community(g) # Perform edge-betweenness community detection on network graph
+sizes(gc)
+
+# Plot community networks determined by fast-greedy and edge-betweenness methods side-by-side
+par(mfrow = c(1, 2)) 
+plot(kc, g)
+plot(gc, g)
+```
+
+### Interactive Network Visualizations with threejs
+
+The `threejs` package in R is used to create interactive 3D scatterplots and networks. We will use it to create an interactive version of our network graph.
+
+```{r}
+## Interactive Network Visualizations with threejs
+library(threejs)
+
+# Set a vertex attribute called 'color' to 'dodgerblue' 
+g <- set_vertex_attr(g, "color", value = "dodgerblue")
+graphjs(g, vertex.size = 1)
+
+# Create numerical vector of vertex eigenvector centralities 
+ec <- as.numeric(eigen_centrality(g)$vector)
+v <- 5*sqrt(ec) # scaled vertex size to eigenvector centralities
+graphjs(g, vertex.size = v)
+
+# Memberships of the fast-greedy community detection
+i <- membership(kc)
+sizes(kc) # Check the number of different communities
+
+# Add a color attribute to each vertex, setting the vertex color based on community membership
+g <- set_vertex_attr(g, "color", value = c("yellow", "blue", "red")[i])
+graphjs(g)
+```
+
+This will render the graph as an interactive threejs plot in your RStudio viewer or in your web browser, with the vertices colored according to their community membership.
